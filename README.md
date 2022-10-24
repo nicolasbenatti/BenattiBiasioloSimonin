@@ -4,4 +4,4 @@
 
 * Nicolas Benatti: nicolas.benatti@mail.polimi.it
 * Lorenzo Biasiolo: lorenzo.biasiolo@mail.polimi.it
-* Melissande Simonin: melissandesylvie@mail.polimi.it
+* Melissande Simonin: melissandesylvie.simonin@mail.polimi.it
