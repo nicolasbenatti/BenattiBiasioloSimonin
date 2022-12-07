@@ -10,5 +10,7 @@
 This repository contains RASD and DD documents alongside with all the deliverable material (mostly UML diagrams).
 
 OneDrive repository avaiable [here](https://tinyurl.com/se2onedriverepo)
+
 RASD document traceability available [here](https://tinyurl.com/se2rasd)
+
 DD document traceability available [here](https://tinyurl.com/se2dd)
