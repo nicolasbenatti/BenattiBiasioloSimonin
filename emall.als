@@ -1,36 +1,28 @@
 // == define needed types ==
 
 abstract sig Bool {}
-
 one sig TRUE extends Bool {}
-
 one sig FALSE extends Bool {}
 
 abstract sig VehicleStatus {}
-
 one sig ONGOING extends VehicleStatus {}
-
 one sig CHARGING extends VehicleStatus {}
 
 abstract sig SlotStatus {}
-
 one sig FREE extends SlotStatus {}
-
 one sig OCCUPIED extends SlotStatus {}
 
 abstract sig SlotType {}
-
 one sig SLOW extends SlotType {}
-
 one sig FAST extends SlotType {}
-
 one sig RAPID extends SlotType {}
 
-// Signatures and relationships
+// === Signatures and relationships ===
 
 sig User {
 	email: one String,
-	owns: one Vehicle
+	owns: one Vehicle,
+	isChargingTo: one ChargingSlot
 }
 
 sig Vehicle {
@@ -39,18 +31,21 @@ sig Vehicle {
 }
 
 sig Dso {
+	energyPrice: one Int,
 	provideEnergyTo: set Cpo
-}
+} {energyPrice > 0}
 
 sig Cpo {
+	storeThreshold: one Int,
 	manages: some ChargingStation,
-	getsEnergyFrom: some Dso
-}
+	getsEnergyFrom: some Dso,
+	storesEnergyFrom: lone Dso
+} {storeThreshold > 0}
 
 sig ChargingStation {
 	batteryAvailable: one Bool,
 	contains: some ChargingSlot,
-	appliedOffers: set Offer
+	appliedOffers: set Offer,
 }
 
 sig ChargingSlot {
@@ -60,11 +55,9 @@ sig ChargingSlot {
 }
 
 sig Booking {
-	user: one User,
+	performedBy: one User,
 	startTime: one Int,
 	endTime: one Int,
-	bookedSlot: one ChargingSlot
-	// slotStatus: one SlotStatus
 } {startTime > 0
    endTime > 0
    startTime < endTime}
@@ -78,7 +71,7 @@ sig Offer {
    endDate > startDate
    discountPercentage > 0}
 
-// === FACTS ===
+// === Facts ===
 
 /**
  * If a station doesn't have batteries, it must
@@ -87,10 +80,12 @@ sig Offer {
 fact {
 	all cpo: Cpo |
 		all c: ChargingStation |
-			c in cpo.manages implies 
-				c.batteryAvailable in FALSE implies
-					one d : Dso |
-						d in cpo.getsEnergyFrom
+			c in cpo.manages
+			implies 
+			(c.batteryAvailable = FALSE 
+			implies
+			one d : Dso |
+				d in cpo.getsEnergyFrom)
 }
 
 /**
@@ -106,10 +101,37 @@ fact {
 }
 
 /**
+ * A CPO can store energy only if at least one of the station it manages
+ * has got batteries available
+ */
+fact {
+	all cpo: Cpo |
+		cpo.storesEnergyFrom != none
+		implies
+		(some cs: ChargingStation |
+		cs in cpo.manages
+		implies
+		cs.batteryAvailable = TRUE)
+}
+
+/**
  * Every charging station is managed by a unique CPO
  */
 fact {
-	all cs: ChargingStation | one cpo: Cpo | cs in cpo.manages
+	all cs: ChargingStation |
+		one cpo: Cpo |
+			cs in cpo.manages
+}
+
+/**
+ * If the user is charging to a slot, then the slot must be taken
+ */
+fact {
+	all u: User |
+		all s: ChargingSlot |
+			s = u.isChargingTo
+			implies
+			s.slotStatus = OCCUPIED
 }
 
 /**
@@ -122,14 +144,6 @@ fact {
 }
 
 /**
- * The same special offer can't be applied by more than 1 station
- */
-/*fact {
-	all disj cs1, cs2: ChargingStation |
-		cs1.appliedOffers & cs2.appliedOffers = none
-}*/
-
-/**
  * Each special offer must be associated with a station
  */
 fact {
@@ -139,7 +153,7 @@ fact {
 }
 
 /**
- * Validity periods of special offers can't overlap
+ * Validity periods of special offers don't overlap
  */
 fact {
 	all cs: ChargingStation |
@@ -150,7 +164,7 @@ fact {
 }
 
 /**
- * Each booking must be associated to a slot
+ * Every booking must be associated to a slot
  */
 fact {
 	all b: Booking |
@@ -159,24 +173,9 @@ fact {
 }
 
 /**
- *	Symmetry between slot and booking
- */
-fact {
-	all s: ChargingSlot |
-		all b: Booking |
-			b in s.bookings iff s = b.bookedSlot
-}
-
-/**
  * Bookings in the same slots don't overlap
  */
 fact {
-	/*all s: ChargingSlot |
-		all b1: Booking |
-			s = b1.bookedSlot
-			implies
-			no b2: Booking |
-				s = b1.bookedSlot implies overlaps[b1.startTime, b1.endTime, b2.startTime, b2.endTime]*/
 	all s: ChargingSlot |
 		all disj b1, b2: Booking |
 			(b1 in s.bookings and b2 in s.bookings)
@@ -191,10 +190,14 @@ fact {
  */
 fact {
 	all cs: ChargingStation |
-		all disj b1, b2: Booking |
-			(b1.bookedSlot in cs.contains and b2.bookedSlot in cs.contains)
+		all disj s1, s2: ChargingSlot |
+			(s1 in cs.contains and s2 in cs.contains)
 			implies
-			complyToSlotSpeed[b1, b2] or complyToSlotSpeed[b2, b1]
+			all disj b1, b2: Booking |
+				(b1 in (s1.bookings + s2.bookings) and
+				 b2 in (s1.bookings + s2.bookings))
+				implies
+				complyToSlotSpeed[cs, s1, s2, b1, b2]
 }
 
 /**
@@ -214,7 +217,25 @@ fact {
 			v in u.owns
 }
 
-// the following facts make sure that everything is connected
+/**
+ * user email and vehicle's license plate must be
+ * different strings
+ */
+fact {
+	all u: User |
+		all v: Vehicle |
+			u.email != v.licensePlate
+}
+
+/**
+ * Each vehicle must have a different license plate
+ */
+fact {
+	all disj v1, v2: Vehicle |
+		v1.licensePlate != v2.licensePlate
+}
+
+// The following facts make sure that every constant is connected
 
 fact allSlotStatusConnected {
 	all ss: SlotStatus |
@@ -241,89 +262,13 @@ fact makeStringsResolve {
 	none != "a" + "b" + "c" + "d"
 }
 
-// === ASSERTIONS ===
+// === Assertions ===
 
-assert distinctCpoForEveryStation {
-	all disj cpo1, cpo2: Cpo | cpo1.manages & cpo2.manages = none
-}
 
-//check distinctCpoForEveryStation
 
-assert everyChargingStationDifferentSlots {
-	no disj cs1, cs2: ChargingStation |
-		cs1.contains & cs2.contains != none
-}
+// === Predicates ===
 
-// check everyChargingStationDifferentSlots
-
-assert everySlotConnectedToStation {
-	all s: ChargingSlot |
-		one cs: ChargingStation |
-			s in cs.contains
-}
-
-// check everySlotConnectedToStation
-
-assert everyOfferIsUniqueToStation {
-	no disj cs1, cs2: ChargingStation |
-		cs1.appliedOffers & cs2.appliedOffers != none
-}
-
-// check everyOfferIsUniqueToStation
-
-assert eachBookingHasStation {
-	no b: Booking |
-		no s: ChargingSlot |
-			b in s.bookings
-}
-
-// check eachBookingHasStation
-
-assert offersDontOverlap {
-		all cs: ChargingStation |
-			all disj o1, o2: Offer |
-				(o1 in cs.appliedOffers and o2 in cs.appliedOffers)
-				implies
-				not overlaps[o1.startDate, o1.endDate, o2.startDate, o2.endDate]
-}
-
-// check offersDontOverlap
-
-assert everyOfferHasStation {
-	all o: Offer | one cs: ChargingStation | o in cs.appliedOffers
-}
-
-// check everyOfferHasStation
-
-assert bookingsDontOverlap {
-	all s: ChargingSlot |
-		no disj b1, b2: Booking |
-			(b1 in s.bookings and b2 in s.bookings)
-			implies 
-			overlaps[b1.startTime, b1.endTime, b2.startTime, b2.endTime]
-}
-
-// check bookingsDontOverlap
-
-assert everyVehicleIsOwned {
-	no v: Vehicle |
-		all u: User |
-			v not in u.owns
-}
-
-// check everyVehicleIsOwned
-
-assert noUserWithoutBooking {
-	all u: User |
-		some b: Booking |
-			u = b.user
-}
-
-// check noUserWithoutBooking
-
-// === PREDICATES ===
-
-pred overlaps[start1: Int, end1: Int, start2: Int, end2: Int] {
+pred overlaps[start1, end1, start2, end2: Int] {
 	(start1 = start2) or
 	(start1 < start2 and start2 <= end1) or 
 	(start1 > start2 and start1 <= end2)
@@ -333,25 +278,62 @@ pred overlaps[start1: Int, end1: Int, start2: Int, end2: Int] {
  * Sets the rules according to which
  * a booking for a faster slot must finish earlier than for a slower one
  */
-pred complyToSlotSpeed[b1: Booking, b2: Booking] {
-	b1.endTime < b2.endTime
-	iff
-	(b1.bookedSlot.type = RAPID and (b2.bookedSlot.type = FAST or b2.bookedSlot.type = SLOW)) or
-	(b1.bookedSlot.type = FAST and b2.bookedSlot.type = SLOW)
+pred complyToSlotSpeed[cs: ChargingStation, s1, s2: ChargingSlot, b1, b2: Booking] {
+	((s1.type = RAPID and s2.type = FAST)
+	implies
+	b1.endTime < b2.endTime)
+	or
+	((s1.type = RAPID and s2.type = SLOW)
+	implies
+	b1.endTime < b2.endTime)
+	or
+	((s1.type = FAST and s2.type = SLOW)
+	implies
+	b1.endTime < b2.endTime)
 }
 
-// === WORLDS ===
+// === Dynamic modeling ===
 
-pred world1 {
+pred addBooking[b: Booking, u: User, s, s': ChargingSlot, start, end: Int] {
+	b.performedBy = u
+	b.startTime = start
+	b.endTime = end
+	s'.bookings = s.bookings + b
+}
+
+run addBooking
+
+pred addOffer[cs, cs': ChargingStation, o: Offer, s, e, p: Int] {
+	o.startDate = s
+	o.endDate = e
+	o.discountPercentage = p
+	cs'.appliedOffers = cs.appliedOffers + o
+}
+
+run addOffer
+
+pred storeEnergy[cpo, cpo': Cpo, dso: Dso] {
+	// precondition
+	cpo.getsEnergyFrom != none
+	
+	// postcondition
+	cpo'.storesEnergyFrom = cpo'.storesEnergyFrom + dso
+	iff
+	(dso.energyPrice < cpo.storeThreshold)
+}
+
+run storeEnergy
+
+// === Worlds ===
+
+pred completeWorld {
 	#Cpo > 1
 	#ChargingStation > 1
-	#ChargingSlot > 3
+	#ChargingSlot > #ChargingStation
 	#Offer > #ChargingStation
 	#Vehicle > 1
-	#Booking > 2
-	// #User > 0
-	
-	all u: User | all v: Vehicle | u.email != v.licensePlate
+	#Booking > #ChargingStation	
+
 	some cs: ChargingStation | #cs.contains > 1
 	some c: Cpo | #c.manages > 1
 	some cs: ChargingStation | cs.batteryAvailable = FALSE
@@ -359,4 +341,4 @@ pred world1 {
 	some disj dso1, dso2: Dso | #dso1.provideEnergyTo > 1 and #dso2.provideEnergyTo > 1
 }
 
-run world1 for 10
+run completeWorld for 5
