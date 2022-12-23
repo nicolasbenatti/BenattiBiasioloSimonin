@@ -1,4 +1,4 @@
-// == define needed types ==
+// == Types and Constants ==
 
 abstract sig Bool {}
 one sig TRUE extends Bool {}
@@ -17,7 +17,7 @@ one sig SLOW extends SlotType {}
 one sig FAST extends SlotType {}
 one sig RAPID extends SlotType {}
 
-// === Signatures and relationships ===
+// === Signatures and Relationships ===
 
 sig User {
 	email: one String,
@@ -112,6 +112,18 @@ fact {
 		cs in cpo.manages
 		implies
 		cs.batteryAvailable = TRUE)
+}
+
+/**
+ * If a CPO stores energy from a certain DSO,
+ * its price must be lower than the computed threshold
+ */
+fact {
+	all cpo: Cpo |
+		all dso: Dso |
+			dso = cpo.storesEnergyFrom
+			implies
+			dso.energyPrice < cpo.storeThreshold
 }
 
 /**
@@ -311,18 +323,6 @@ pred addOffer[cs, cs': ChargingStation, o: Offer, s, e, p: Int] {
 }
 
 run addOffer
-
-pred storeEnergy[cpo, cpo': Cpo, dso: Dso] {
-	// precondition
-	cpo.getsEnergyFrom != none
-	
-	// postcondition
-	cpo'.storesEnergyFrom = cpo'.storesEnergyFrom + dso
-	iff
-	(dso.energyPrice < cpo.storeThreshold)
-}
-
-run storeEnergy
 
 // === Worlds ===
 
