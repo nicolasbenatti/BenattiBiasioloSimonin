@@ -11,6 +11,6 @@ This repository contains RASD and DD documents alongside with all the deliverabl
 
 OneDrive repository avaiable [here](https://tinyurl.com/se2onedriverepo)
 
-RASD document available [here](https://tinyurl.com/se2rasd)
+RASD document collab available [here](https://tinyurl.com/se2rasd)
 
-DD document available [here](https://tinyurl.com/se2dd)
+DD document collab available [here](https://tinyurl.com/se2dd)
